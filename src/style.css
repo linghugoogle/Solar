@@ -1,0 +1,64 @@
+@font-face {
+  font-family: 'Datatype';
+  src: url('/fonts/Datatype.woff2') format('woff2');
+  font-weight: 100 900;
+  font-stretch: 50% 150%;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: #000;
+  font-family: 'Datatype', sans-serif;
+  font-variation-settings: 'wdth' 100, 'wght' 400;
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+  display: block;
+}
+
+#ui-container {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.toggle-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: inherit;
+  backdrop-filter: blur(4px);
+  transition: all 0.3s ease;
+}
+
+.toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.toggle-btn.active {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.planet-label {
+  color: white;
+  font-family: inherit;
+  font-size: 14px;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  pointer-events: none;
+  user-select: none;
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.8), 0 0 8px rgba(0, 0, 0, 0.8);
+}
