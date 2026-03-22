@@ -142,6 +142,8 @@ interface PlanetConfig {
   name: string;
   radius: number;
   distance: number;
+  eccentricity?: number;
+  inclination?: number; // In degrees
   revolutionSpeed: number;
   rotationSpeed: number;
   texture: string;
@@ -158,38 +160,44 @@ const D_EARTH = 300; // Earth distance = 300 units
 
 const planetsData: PlanetConfig[] = [
   // Mercury: Real radius ~0.38x Earth, Distance ~0.39x Earth
-  { name: 'Mercury', radius: R_EARTH * 0.38, distance: D_EARTH * 0.39, revolutionSpeed: 0.0004, rotationSpeed: 0.0005, texture: '/textures/mercury.jpg' },
+  { name: 'Mercury', radius: R_EARTH * 0.38, distance: D_EARTH * 0.39, eccentricity: 0.2056, inclination: 7.01, revolutionSpeed: 0.0004, rotationSpeed: 0.0005, texture: '/textures/mercury.jpg' },
   // Venus: Real radius ~0.95x Earth, Distance ~0.72x Earth
-  { name: 'Venus', radius: R_EARTH * 0.95, distance: D_EARTH * 0.72, revolutionSpeed: 0.0003, rotationSpeed: 0.0002, texture: '/textures/venus.jpg' },
+  { name: 'Venus', radius: R_EARTH * 0.95, distance: D_EARTH * 0.72, eccentricity: 0.0067, inclination: 3.39, revolutionSpeed: 0.0003, rotationSpeed: 0.0002, texture: '/textures/venus.jpg' },
   // Earth: 1x, 1x
-  { name: 'Earth', radius: R_EARTH, distance: D_EARTH, revolutionSpeed: 0.0002, rotationSpeed: 0.001, texture: '/textures/earth.jpg',
+  { name: 'Earth', radius: R_EARTH, distance: D_EARTH, eccentricity: 0.0167, inclination: 0.00, revolutionSpeed: 0.0002, rotationSpeed: 0.001, texture: '/textures/earth.jpg',
     moons: [
-      { name: 'Moon', radius: R_EARTH * 0.27, distance: 5, revolutionSpeed: 0.005, rotationSpeed: 0.0005, texture: '/textures/moon.jpg' }
+      { name: 'Moon', radius: R_EARTH * 0.27, distance: 5, eccentricity: 0.0549, inclination: 5.15, revolutionSpeed: 0.005, rotationSpeed: 0.0005, texture: '/textures/moon.jpg' }
     ]
   },
   // Mars: Real radius ~0.53x Earth, Distance ~1.52x Earth
-  { name: 'Mars', radius: R_EARTH * 0.53, distance: D_EARTH * 1.52, revolutionSpeed: 0.0001, rotationSpeed: 0.0009, texture: '/textures/mars.jpg' },
+  { name: 'Mars', radius: R_EARTH * 0.53, distance: D_EARTH * 1.52, eccentricity: 0.0934, inclination: 1.85, revolutionSpeed: 0.0001, rotationSpeed: 0.0009, texture: '/textures/mars.jpg' },
   // Jupiter: Real radius ~11.2x Earth. We cap it slightly so it doesn't dominate too much. Distance ~5.2x Earth
-  { name: 'Jupiter', radius: R_EARTH * 8, distance: D_EARTH * 3.5, revolutionSpeed: 0.00004, rotationSpeed: 0.002, texture: '/textures/jupiter.jpg' },
+  { name: 'Jupiter', radius: R_EARTH * 8, distance: D_EARTH * 5.2, eccentricity: 0.0489, inclination: 1.31, revolutionSpeed: 0.00004, rotationSpeed: 0.002, texture: '/textures/jupiter.jpg' },
   // Saturn: Real radius ~9.4x Earth. Distance ~9.5x Earth
-  { name: 'Saturn', radius: R_EARTH * 7, distance: D_EARTH * 5.5, revolutionSpeed: 0.00003, rotationSpeed: 0.0018, texture: '/textures/saturn.jpg',
+  { name: 'Saturn', radius: R_EARTH * 7, distance: D_EARTH * 9.5, eccentricity: 0.0565, inclination: 2.49, revolutionSpeed: 0.00003, rotationSpeed: 0.0018, texture: '/textures/saturn.jpg',
     hasRing: true, ringInner: R_EARTH * 9, ringOuter: R_EARTH * 15, ringTexture: '/textures/saturn_ring.png'
   },
   // Uranus: Real radius ~4x Earth. Distance ~19.2x Earth
-  { name: 'Uranus', radius: R_EARTH * 4, distance: D_EARTH * 7.5, revolutionSpeed: 0.00002, rotationSpeed: 0.0015, texture: '/textures/uranus.jpg' },
+  { name: 'Uranus', radius: R_EARTH * 4, distance: D_EARTH * 19.2, eccentricity: 0.0457, inclination: 0.77, revolutionSpeed: 0.00002, rotationSpeed: 0.0015, texture: '/textures/uranus.jpg' },
   // Neptune: Real radius ~3.8x Earth. Distance ~30x Earth
-  { name: 'Neptune', radius: R_EARTH * 3.8, distance: D_EARTH * 9.5, revolutionSpeed: 0.00001, rotationSpeed: 0.0016, texture: '/textures/neptune.jpg' }
+  { name: 'Neptune', radius: R_EARTH * 3.8, distance: D_EARTH * 30.1, eccentricity: 0.0113, inclination: 1.77, revolutionSpeed: 0.00001, rotationSpeed: 0.0016, texture: '/textures/neptune.jpg' }
 ];
 
-const planets: { pivot: THREE.Group, mesh: THREE.Mesh, config: PlanetConfig, isMoon?: boolean, orbitLine?: THREE.Line, label?: CSS2DObject }[] = [];
+const planets: { orbitGroup: THREE.Group, mesh: THREE.Mesh, config: PlanetConfig, isMoon?: boolean, orbitLine?: THREE.Line, label?: CSS2DObject, orbitalAngle: number }[] = [];
 
 // UI State
 let showOrbits = false;
 let showLabels = false;
+let isMusicPlaying = false;
+
+// --- Audio Setup ---
+const backgroundMusic = new Audio('/music.mp3');
+backgroundMusic.loop = true;
+backgroundMusic.volume = 0.5; // Start at 50% volume for a serene background effect
 
 // --- Create Celestial Bodies ---
 function createBody(config: PlanetConfig, isMoon = false) {
-  const pivot = new THREE.Group();
+  const orbitGroup = new THREE.Group();
 
   const geometry = new THREE.SphereGeometry(config.radius, 64, 64);
   const material = new THREE.MeshStandardMaterial({
@@ -201,9 +209,15 @@ function createBody(config: PlanetConfig, isMoon = false) {
   const mesh = new THREE.Mesh(geometry, material);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
-  mesh.position.x = config.distance;
+  // Do NOT set position.x here anymore, we will position the orbitGroup directly
 
-  pivot.add(mesh);
+  orbitGroup.add(mesh);
+
+  const a = config.distance;
+  const e = config.eccentricity || 0;
+  const inc = (config.inclination || 0) * (Math.PI / 180);
+  const c = a * e;
+  const b = a * Math.sqrt(1 - e * e);
 
   // Orbit Line
   const orbitGeometry = new THREE.BufferGeometry();
@@ -211,15 +225,17 @@ function createBody(config: PlanetConfig, isMoon = false) {
   const segments = 128;
   for (let i = 0; i <= segments; i++) {
     const theta = (i / segments) * Math.PI * 2;
-    // Keep Y at 0, draw circle on XZ plane
-    orbitPoints.push(new THREE.Vector3(Math.cos(theta) * config.distance, 0, Math.sin(theta) * config.distance));
+    const x = -c + a * Math.cos(theta);
+    const z = b * Math.sin(theta);
+    // Apply inclination (rotate around X axis)
+    const y = -z * Math.sin(inc);
+    const zRot = z * Math.cos(inc);
+    orbitPoints.push(new THREE.Vector3(x, y, zRot));
   }
   orbitGeometry.setFromPoints(orbitPoints);
   const orbitMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 });
   const orbitLine = new THREE.Line(orbitGeometry, orbitMaterial);
-  // Do not rotate the orbit line. The circle is already drawn on the XZ plane.
   orbitLine.visible = showOrbits;
-  // Add orbit line directly to scene so it doesn't rotate with pivot
   if (!isMoon) {
     scene.add(orbitLine);
   }
@@ -231,7 +247,7 @@ function createBody(config: PlanetConfig, isMoon = false) {
   labelDiv.style.visibility = showLabels ? 'visible' : 'hidden';
   const label = new CSS2DObject(labelDiv);
   label.position.set(0, config.radius + 1, 0);
-  mesh.add(label);
+  orbitGroup.add(label);
 
   // Add rings if present
   if (config.hasRing && config.ringTexture && config.ringInner && config.ringOuter) {
@@ -258,27 +274,26 @@ function createBody(config: PlanetConfig, isMoon = false) {
       const moon = createBody(moonConfig, true);
       // For moons, orbit lines should be relative to the planet
       if (moon.orbitLine) {
-        moon.orbitLine.rotation.x = 0; // Reset, parent mesh handles it
-        mesh.add(moon.orbitLine);
+        orbitGroup.add(moon.orbitLine);
       }
-      mesh.add(moon.pivot);
+      orbitGroup.add(moon.orbitGroup);
     });
   }
 
   // Initial random angles
-  pivot.rotation.y = Math.random() * Math.PI * 2;
+  const orbitalAngle = Math.random() * Math.PI * 2;
   mesh.rotation.y = Math.random() * Math.PI * 2;
 
   // Axial tilt
   mesh.rotation.z = Math.random() * 0.4;
 
-  planets.push({ pivot, mesh, config, isMoon, orbitLine, label });
-  return { pivot, mesh, orbitLine };
+  planets.push({ orbitGroup, mesh, config, isMoon, orbitLine, label, orbitalAngle });
+  return { orbitGroup, mesh, orbitLine };
 }
 
 planetsData.forEach(planetConfig => {
-  const { pivot } = createBody(planetConfig);
-  scene.add(pivot);
+  const { orbitGroup } = createBody(planetConfig);
+  scene.add(orbitGroup);
 });
 
 // --- Raycaster for 3D Interaction ---
@@ -415,6 +430,19 @@ document.getElementById('toggle-labels')?.addEventListener('click', (e) => {
   });
 });
 
+document.getElementById('toggle-music')?.addEventListener('click', (e) => {
+  isMusicPlaying = !isMusicPlaying;
+  const btn = e.target as HTMLButtonElement;
+  btn.classList.toggle('active', isMusicPlaying);
+  btn.textContent = isMusicPlaying ? 'Stop Music' : 'Play Music';
+
+  if (isMusicPlaying) {
+    backgroundMusic.play().catch(err => console.error("Audio playback failed:", err));
+  } else {
+    backgroundMusic.pause();
+  }
+});
+
 // --- Animation Loop ---
 function animate() {
   requestAnimationFrame(animate);
@@ -422,7 +450,22 @@ function animate() {
   // Revolutions and rotations
   planets.forEach(p => {
     p.mesh.rotation.y += p.config.rotationSpeed;
-    p.pivot.rotation.y += p.config.revolutionSpeed;
+    p.orbitalAngle += p.config.revolutionSpeed;
+
+    const a = p.config.distance;
+    const e = p.config.eccentricity || 0;
+    const inc = (p.config.inclination || 0) * (Math.PI / 180);
+    const c = a * e;
+    const b = a * Math.sqrt(1 - e * e);
+
+    const x = -c + a * Math.cos(p.orbitalAngle);
+    const z = b * Math.sin(p.orbitalAngle);
+
+    // Apply inclination
+    const y = -z * Math.sin(inc);
+    const zRot = z * Math.cos(inc);
+
+    p.orbitGroup.position.set(x, y, zRot);
   });
 
   sunMesh.rotation.y += 0.0002;
